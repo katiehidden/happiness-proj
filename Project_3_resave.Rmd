@@ -1,0 +1,441 @@
+---
+title: "Testing for Significant Predictors of Happiness with Data from the World Happiness Report 2020"
+author: "Katie Hidden"
+date: "Last updated: `r Sys.Date()`"
+output:
+    html_document:
+      toc: TRUE
+      toc_depth: 4
+      toc_float: TRUE
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(stats)
+library(infer)
+library(groupedstats)
+library(ggplot2)
+library(dplyr)
+library(car)
+library(pander)
+library(agricolae)
+library(DescTools)
+library(pgirmess)
+library(multcomp)
+library(fBasics)
+
+### p.value.string v2
+# Update v2: added the formatting that turns of scientific notation
+# fixes the case when p = 0.0001 (instead of p=1e-4)
+# This function called p.value.string creates a string
+# to be used when reporting the p-value. It includes the p on the LHS.
+# You will likely place it in $$ to get the LaTeX math formatting.
+# This should be placed in an r code chunk in the beginning of your R markdown
+# This code chunk by itself shouldn't produce any result.
+# by Reid Ginoza
+
+p.value.string = function(p.value){
+  p.value <- round(p.value, digits=4)
+  if (p.value == 0) {
+    return("p < 0.0001")
+  } else {
+    return(paste0("p = ", format(p.value, scientific = F)))
+  }
+}
+
+
+# function to create assumption assessment plots
+# written by Reid Ginoza Fall 2019
+# this pulls together the ANOVA assessment plots into a single image
+almost_sas <- function(aov.results){
+  par(mfrow=c(2,2))
+  plot(aov.results, which=1)
+  plot(aov.results, which=2)
+  aov_residuals <- residuals(aov.results)
+  plot(density(aov_residuals))
+  hist(aov_residuals)
+}
+
+```
+
+<br>
+
+## Introduction
+
+&emsp;&emsp; The World Happiness Report 2020 is the eighth World Happiness Report, an annual publication which interprets a wide variety of data, primarily from the Gallup World Poll, about self-reported happiness and social, economic, and environmental factors in 156 countries (Helliwell, Layard, Sachs, and De Neve, 2020). In this paper, I will explore some of the raw data used in the The World Happiness Report. The main variables I will focus on are:
+
+**Outcome/Dependent Variable**
+
+- Ladder (happiness) score: Survey participants were asked to imagine their current position on a ladder with steps numbered from 0 to 10, with the best possible life for themselves represented at the top (step 10) and and the worst possible life for themselves represented at the bottom (step 0). The national average of the responses is used for each country.
+
+&emsp;&emsp; (Helliwell, Layard, Sachs, and De Neve, 2020, p. 19)
+
+**Predictor/Independent Variables**
+
+- Logged GDP per capita: The natural log of GDP per capita in terms of Purchasing Power Parity (PPP) adjusted to constant 2011 international dollars. Since GDP data for 2019 was not available at the time of the report, country-specific forecasts of GDP growth were used after adjusting for population growth.
+
+- Social support: The national average of binary responses (0 = no, 1 = yes) to the Gallup World Poll question, “If you were in trouble, do you have relatives or friends you can count on to help you whenever you need them, or not?”
+
+- Healthy life expectancy: The national average expected number of years of life spent in good health from birth.
+
+- Freedom to make life choices: The national average of binary responses to the Gallup World Poll question, “Are you satisfied or dissatisfied with your freedom to choose what you do with your life?”
+
+-  Perceptions of corruption: The national average of binary answers to two Gallup World Poll questions, “Is corruption widespread throughout the government or not?” and “Is corruption widespread within businesses or not?” Where data for government corruption are missing, the perception of business corruption is used as the overall corruption-perception measure instead. 
+
+&emsp;&emsp; (Helliwell, Layard, Sachs, and De Neve, 2020, p. 22)
+
+
+&emsp;&emsp; I will construct a multiple linear regression line and test for significant predictors to find out which of these variables, if any, significantly affect the ladder score.
+
+<br>
+
+```{r data}
+happydata <- read_csv("2020.csv")
+
+variables_only_data_frame <- data.frame(Ladder_score = happydata$Ladder_score, Logged_GDP_per_capita = happydata$Logged_GDP_per_capita, Social_support = happydata$Social_support, Healthy_life_expectancy = happydata$Healthy_life_expectancy, Freedom_to_make_choices = happydata$Freedom_to_make_life_choices,  Perceptions_of_corruption = happydata$Perceptions_of_corruption) 
+```
+
+<br>
+
+## Summary Statistics
+```{r summary_data}
+summary_stats <- data.frame(t(basicStats(variables_only_data_frame)[c("Mean", "Stdev", "Minimum", "Median", "Maximum", "nobs"),]))
+
+pander(summary_stats)
+```
+
+### Ladder Score 
+```{r ladder_score_histogram}
+ggplot(data = happydata, mapping = aes(x = happydata$Ladder_score)) +
+  geom_histogram(bins = 40, color = "black", fill = "lightgray") +
+  xlab("Ladder Score") +
+  scale_x_continuous(breaks = (seq(min(0), max(10), by = 1))) +
+  theme_bw() 
+```
+
+&emsp;&emsp; The mean (standard deviation) ladder score is `r round(summary_stats$Mean[1], digits = 2)` (`r round(summary_stats$Stdev[1], digits = 2)`). The median ladder score is `r round(summary_stats$Median[1], digits = 2)`.
+
+### Logged GDP per Capita
+```{r GDP_histogram}
+ggplot(data = happydata, mapping = aes(x = happydata$Logged_GDP_per_capita)) +
+  geom_histogram(bins = 25, color = "black", fill = "lightgray") +
+  xlab("Logged GDP per Capita") +
+  theme_bw() 
+```
+
+&emsp;&emsp; The mean (standard deviation) logged GDP per capita is `r round(summary_stats$Mean[2], digits = 2)` (`r round(summary_stats$Stdev[2], digits = 2)`). The median logged GDP per capita is `r round(summary_stats$Median[2], digits = 2)`.
+
+### Social Support
+```{r social_histogram}
+ggplot(data = happydata, mapping = aes(x = happydata$Social_support)) +
+  geom_histogram(bins = 25, color = "black", fill = "lightgray") +
+  xlab("Social Support Score") +
+  theme_bw() 
+```
+
+&emsp;&emsp; The mean (standard deviation) social support score is `r round(summary_stats$Mean[3], digits = 2)` (`r round(summary_stats$Stdev[3], digits = 2)`). The median social support score is `r round(summary_stats$Median[3], digits = 2)`.
+
+### Healthy Life Expectancy
+
+```{r life_histogram}
+ggplot(data = happydata, mapping = aes(x = happydata$Healthy_life_expectancy)) +
+  geom_histogram(bins = 25, color = "black", fill = "lightgray") +
+  xlab("Healthy Life Expectancy (in years)") +
+  theme_bw() 
+```
+
+&emsp;&emsp; The mean (standard deviation) healthy life expectancy is `r round(summary_stats$Mean[4], digits = 2)` (`r round(summary_stats$Stdev[4], digits = 2)`) years. The median healthy life expectancy is `r round(summary_stats$Median[4], digits = 2)` years.
+
+### Freedom to Make Life Choices
+
+```{r freedom_histogram}
+ggplot(data = happydata, mapping = aes(x = happydata$Freedom_to_make_life_choices)) +
+  geom_histogram(bins = 25, color = "black", fill = "lightgray") +
+  xlab("Freedom to Make Life Choices Score") +
+  theme_bw() 
+```
+
+&emsp;&emsp; The mean (standard deviation) freedom to make life choices score is `r round(summary_stats$Mean[5], digits = 2)` (`r round(summary_stats$Stdev[5], digits = 2)`). The median freedom to make life choices score is `r round(summary_stats$Median[5], digits = 2)`.
+
+### Perceptions of Corruption
+```{r corruption_histogram}
+ggplot(data = happydata, mapping = aes(x = happydata$Perceptions_of_corruption)) +
+  geom_histogram(bins = 25, color = "black", fill = "lightgray") +
+  xlab("Perceptions of Corruption Score") +
+  theme_bw() 
+```
+
+&emsp;&emsp; The mean (standard deviation) perceptions of corruption score is `r round(summary_stats$Mean[6], digits = 2)` (`r round(summary_stats$Stdev[6], digits = 2)`). The median perceptions of corruption score is `r round(summary_stats$Median[6], digits = 2)`.
+
+<br>
+
+## Multiple Linear Regression Line
+
+```{r}
+happy_model <- lm(Ladder_score ~ Logged_GDP_per_capita + Social_support + Healthy_life_expectancy + Freedom_to_make_life_choices + Perceptions_of_corruption, data=happydata)
+happy_coef <- coefficients(happy_model)
+happy_anova <- anova(happy_model)
+happy_summary <- summary(happy_model)
+happy_t <- as_tibble(happy_summary[[4]])
+happy_ci <- as_tibble(confint(happy_model, level=0.95))
+```
+
+<br> 
+
+The regression model is: 
+\[ \hat{y} = `r round(happy_coef[[1]], digits = 2)` + `r round(happy_coef[[2]], digits = 2)`_\mbox{Logged_GDP_per_capita} + `r round(happy_coef[[3]], digits = 2)`_\mbox{Social_support} + `r round(happy_coef[[4]], digits = 2)`_\mbox{Healthy_life_expectancy} + `r round(happy_coef[[5]], digits = 2)`_\mbox{Freedom_to_make_life_choices} `r round(happy_coef[[6]], digits = 2)`_\mbox{Perceptions_of_corruption}\] 
+
+<br>
+
+## Hypothesis Test for Significance of Regression Line
+**Hypotheses**
+
+&emsp;&emsp; $H_0: \ \beta_1 = \beta_2 = \beta_3 = \beta_4 = \beta_5 = 0$ <br>
+&emsp;&emsp; $H_1: \ \mbox{at least one } \beta_i \ne 0$
+
+**Test Statistic**
+
+&emsp;&emsp; $F_0 = `r round(happy_summary$fstatistic[1], digits=2)`$.
+
+***p*-value**
+
+&emsp;&emsp; $`r p.value.string(1-pf(happy_summary$fstatistic[1], happy_summary$fstatistic[2], happy_summary$fstatistic[3]))`$.
+
+**Rejection Region**
+
+&emsp;&emsp; Reject if $p < \alpha$, where $\alpha=0.05$.
+
+**Conclusion and Interpretation**
+
+&emsp;&emsp; Reject $H_0$. There is sufficient evidence to suggest that the regression line is significant.
+
+<br>
+
+##  Hypothesis Tests for Significance of Individual Predictors
+
+<br>
+
+### Overview
+
+|  Predictor                   |           Estimate of $\beta$           |                                    95% CI for $\beta$                                   |                *p*-value                |
+|:----------------------------:|:----------------------------------:|:---------------------------------------------------------------------------------------:|:---------------------------------------:|
+| Logged GDP per Capita        | `r round(happy_coef[[2]], digits = 2)` | (`r round(happy_ci$"2.5 %"[2], digits = 2)`, `r round(happy_ci$"97.5 %"[2], digits = 2)`) | `r p.value.string(happy_t$"Pr(>|t|)"[2])` |
+| Social Support               | `r round(happy_coef[[3]], digits = 2)` | (`r round(happy_ci$"2.5 %"[3], digits = 2)`, `r round(happy_ci$"97.5 %"[3], digits = 2)`) | `r p.value.string(happy_t$"Pr(>|t|)"[3])` |
+| Healthy Life Expectancy      | `r round(happy_coef[[4]], digits = 2)` | (`r round(happy_ci$"2.5 %"[4], digits = 2)`, `r round(happy_ci$"97.5 %"[4], digits = 2)`) | `r p.value.string(happy_t$"Pr(>|t|)"[4])` |
+| Freedom to Make Life Choices | `r round(happy_coef[[5]], digits = 2)` | (`r round(happy_ci$"2.5 %"[5], digits = 2)`, `r round(happy_ci$"97.5 %"[5], digits = 2)`) | `r p.value.string(happy_t$"Pr(>|t|)"[5])` |
+| Perceptions of Corruption    | `r round(happy_coef[[6]], digits = 2)` | (`r round(happy_ci$"2.5 %"[6], digits = 2)`, `r round(happy_ci$"97.5 %"[6], digits = 2)`) | `r p.value.string(happy_t$"Pr(>|t|)"[6])` |
+
+<br>
+
+### Logged GDP per Capita
+
+```{r GDP_p}
+GDP_p <- ggplot(happydata, aes(x = happydata$Logged_GDP_per_capita, y = happydata$Ladder_score)) + 
+        geom_point(alpha = 0.5) + 
+        xlab("Logged GDP per Capita") + 
+        ylab("Ladder Score") +
+        theme_bw()
+GDP_p
+```
+
+
+**Hypotheses**
+
+&emsp;&emsp; $H_0: \ \beta_1 = 0$ <br>
+&emsp;&emsp; $H_1: \ \beta_1 \ne 0$
+
+**Test Statistic**
+
+&emsp;&emsp; $t_0 = `r round(happy_t$"t value"[2], digits=2)`$.
+
+***p*-value**
+
+&emsp;&emsp; $`r p.value.string(happy_t$"Pr(>|t|)"[2])`$.
+
+**Rejection Region**
+
+&emsp;&emsp; Reject if $p < \alpha$, where $\alpha=0.05$.
+
+**Conclusion and Interpretation**
+
+&emsp;&emsp; Reject $H_0$. There is sufficient evidence to suggest that logged GDP per capita is a significant predictor of ladder score.
+
+<br>
+
+### Social Support
+
+```{r social_p}
+social_p <- ggplot(happydata, aes(x = happydata$Social_support, y = happydata$Ladder_score)) + 
+        geom_point(alpha = 0.5) + 
+        xlab("Social Support Score") + 
+        ylab("Ladder Score") +
+        theme_bw()
+social_p
+```
+
+**Hypotheses**
+
+&emsp;&emsp; $H_0: \ \beta_2 = 0$ <br>
+&emsp;&emsp; $H_1: \ \beta_2 \ne 0$
+
+**Test Statistic**
+
+&emsp;&emsp; $t_0 = `r round(happy_t$"t value"[3], digits=2)`$.
+
+***p*-value**
+
+&emsp;&emsp; $`r p.value.string(happy_t$"Pr(>|t|)"[3])`$.
+
+**Rejection Region**
+
+&emsp;&emsp; Reject if $p < \alpha$, where $\alpha=0.05$.
+
+**Conclusion and Interpretation**
+
+&emsp;&emsp; Reject $H_0$. There is sufficient evidence to suggest that social support is a significant predictor of ladder score.
+
+<br>
+
+### Healthy Life Expectancy
+
+```{r healthy_p}
+healthy_p <- ggplot(happydata, aes(x = happydata$Healthy_life_expectancy, y = happydata$Ladder_score)) + 
+        geom_point(alpha = 0.5) + 
+        xlab("Healthy Life Expectancy") + 
+        ylab("Ladder Score") +
+        theme_bw()
+healthy_p
+```
+
+**Hypotheses**
+
+&emsp;&emsp; $H_0: \ \beta_3 = 0$ <br>
+&emsp;&emsp; $H_1: \ \beta_3 \ne 0$
+
+**Test Statistic**
+
+&emsp;&emsp; $t_0 = `r round(happy_t$"t value"[4], digits=2)`$.
+
+***p*-value**
+
+&emsp;&emsp; $`r p.value.string(happy_t$"Pr(>|t|)"[4])`$.
+
+**Rejection Region**
+
+&emsp;&emsp; Reject if $p < \alpha$, where $\alpha=0.05$.
+
+**Conclusion and Interpretation**
+
+&emsp;&emsp; Reject $H_0$. There is sufficient evidence to suggest that healthy life expectancy is a significant predictor of ladder score.
+
+<br>
+
+### Freedom to Make Life Choices
+
+```{r freedom_p}
+freedom_p <- ggplot(happydata, aes(x = happydata$Freedom_to_make_life_choices, y = happydata$Ladder_score)) + 
+        geom_point(alpha = 0.5) + 
+        xlab("Freedom to Make Life Choices Score") + 
+        ylab("Ladder Score") +
+        theme_bw()
+freedom_p
+```
+
+**Hypotheses**
+
+&emsp;&emsp; $H_0: \ \beta_4 = 0$ <br>
+&emsp;&emsp; $H_1: \ \beta_4 \ne 0$
+
+**Test Statistic**
+
+&emsp;&emsp; $t_0 = `r round(happy_t$"t value"[5], digits=2)`$.
+
+***p*-value**
+
+&emsp;&emsp; $`r p.value.string(happy_t$"Pr(>|t|)"[5])`$.
+
+**Rejection Region**
+
+&emsp;&emsp; Reject if $p < \alpha$, where $\alpha=0.05$.
+
+**Conclusion and Interpretation**
+
+&emsp;&emsp; Reject $H_0$. There is sufficient evidence to suggest that freedom to make life choices is a significant predictor of ladder score.
+
+<br>
+
+### Perceptions of Corruption
+
+```{r corruption_p}
+corruption_p <- ggplot(happydata, aes(x = happydata$Perceptions_of_corruption, y = happydata$Ladder_score)) + 
+        geom_point(alpha = 0.5) + 
+        xlab("Perceptions of Corruption") + 
+        ylab("Ladder Score") +
+        theme_bw()
+corruption_p
+```
+
+**Hypotheses**
+
+&emsp;&emsp; $H_0: \ \beta_5 = 0$ <br>
+&emsp;&emsp; $H_1: \ \beta_5 \ne 0$
+
+**Test Statistic**
+
+&emsp;&emsp; $t_0 = `r round(happy_t$"t value"[6], digits=2)`$.
+
+***p*-value**
+
+&emsp;&emsp; $`r p.value.string(happy_t$"Pr(>|t|)"[6])`$.
+
+**Rejection Region**
+
+&emsp;&emsp; Reject if $p < \alpha$, where $\alpha=0.05$.
+
+**Conclusion and Interpretation**
+
+&emsp;&emsp; Reject $H_0$. There is sufficient evidence to suggest that perceptions of corruption is a significant predictor of ladder score.
+
+<br>
+
+## 95% Confidence interval for $\beta_i$
+
+&emsp;&emsp; The confidence interval for logged GDP per capita is (`r round(happy_ci$"2.5 %"[2], digits = 2)`, `r round(happy_ci$"97.5 %"[2], digits = 2)`).
+
+&emsp;&emsp; The confidence interval for social support is (`r round(happy_ci$"2.5 %"[3], digits = 2)`, `r round(happy_ci$"97.5 %"[3], digits = 2)`).
+
+&emsp;&emsp; The confidence interval for healthy life expectancy is (`r round(happy_ci$"2.5 %"[4], digits = 2)`, `r round(happy_ci$"97.5 %"[4], digits = 2)`).
+
+&emsp;&emsp; The confidence interval for freedom to make life choices is (`r round(happy_ci$"2.5 %"[5], digits = 2)`, `r round(happy_ci$"97.5 %"[5], digits = 2)`).
+
+&emsp;&emsp; The confidence interval for perceptions of corruption is (`r round(happy_ci$"2.5 %"[6], digits = 2)`, `r round(happy_ci$"97.5 %"[6], digits = 2)`).
+
+<br>
+
+## Adjusted R-Squared 
+
+&emsp;&emsp; $R^2_\mbox{adj}=`r round(happy_summary$r.squared, digits = 2)`$; that is, approximately `r 100*round(happy_summary$r.squared, digits = 2)`% of the variance in ladder score is explained by the current model (logged GDP per capita, social support, healthy life expectancy, freedom to make life choices, and perceptions of corruption). 
+
+<br>
+
+## Graphical Assessment of Assumptions
+
+```{r model_assumptions} 
+almost_sas(happy_model)
+```
+
+&emsp;&emsp; The top left graph shows no clear pattern with a curved but approximately horizontal line, satisfying the equal variance assumption. In the top right, the Q-Q plot shows that the data follows an approximate 45 degree line, satisfying the normality assumption. The histogram, in the bottom right corner, has a roughly normal shape but is a little skewed to the left. The bottom left graph shows that density also has a roughly normal shape.
+
+<br>
+
+## Conclusion
+
+&emsp;&emsp; The hypothesis test for significance of the regression line suggests that the regression line is significant, and furthermore, hypothesis tests for significance of individual predictors suggest that each predictor is also significant. Higher logged GDP per capita, level of social support, healthy life expectancy, and freedom to make life choices, and lower perceptions of corruption, are each associated with a higher ladder score. These predictors make up a significant portion of the current model, with approximately `r 100*round(happy_summary$r.squared, digits = 2)`% of the variance in ladder score explained by these predictors. This data suggests that money, family and friends, good health, freedom, and trustworthy leaders are all important factors of happiness.
+
+<br>
+
+## References
+
+Helliwell, John F., Richard Layard, Jeffrey Sachs, and Jan-Emmanuel De Neve, eds. 2020. *World Happiness Report 2020*. New York: Sustainable Development Solutions Network. 
