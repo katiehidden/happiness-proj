@@ -1,5 +1,10 @@
 ---
 title: "Testing for Significant Predictors of Happiness with Data from the World Happiness Report 2020"
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 author: "Katie Hidden"
 date: "Last updated: `r Sys.Date()`"
 output:
