@@ -1497,7 +1497,7 @@ div.tocify {
 
 <h1 class="title toc-ignore">Testing for Significant Predictors of Happiness with Data from the World Happiness Report 2020</h1>
 <h4 class="author">Katie Hidden</h4>
-<h4 class="date">Last updated: 2021-03-24</h4>
+<h4 class="date">Last updated: 2021-03-26</h4>
 
 </div>
 
@@ -1522,16 +1522,9 @@ div.tocify {
 <p>   (Helliwell, Layard, Sachs, and De Neve, 2020, p. 22)</p>
 <p>   I will construct a multiple linear regression line and test for significant predictors to find out which of these variables, if any, significantly affect the ladder score.</p>
 <p><br></p>
-<pre class="r"><code>happydata &lt;- read_csv(&quot;2020.csv&quot;)</code></pre>
-<pre><code>## 
-## -- Column specification --------------------------------------------------------
-## cols(
-##   .default = col_double(),
-##   Country_name = col_character(),
-##   Regional_indicator = col_character()
-## )
-## i Use `spec()` for the full column specifications.</code></pre>
-<pre class="r"><code>variables_only_data_frame &lt;- data.frame(Ladder_score = happydata$Ladder_score, Logged_GDP_per_capita = happydata$Logged_GDP_per_capita, Social_support = happydata$Social_support, Healthy_life_expectancy = happydata$Healthy_life_expectancy, Freedom_to_make_choices = happydata$Freedom_to_make_life_choices,  Perceptions_of_corruption = happydata$Perceptions_of_corruption) </code></pre>
+<pre class="r"><code>happydata &lt;- read_csv(&quot;2020.csv&quot;)
+
+variables_only_data_frame &lt;- data.frame(Ladder_score = happydata$Ladder_score, Logged_GDP_per_capita = happydata$Logged_GDP_per_capita, Social_support = happydata$Social_support, Healthy_life_expectancy = happydata$Healthy_life_expectancy, Freedom_to_make_choices = happydata$Freedom_to_make_life_choices,  Perceptions_of_corruption = happydata$Perceptions_of_corruption) </code></pre>
 <p><br></p>
 </div>
 <div id="summary-statistics" class="section level2">

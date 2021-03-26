@@ -96,7 +96,7 @@ almost_sas <- function(aov.results){
 
 <br>
 
-```{r data}
+```{r data, warning=FALSE, message=FALSE}
 happydata <- read_csv("2020.csv")
 
 variables_only_data_frame <- data.frame(Ladder_score = happydata$Ladder_score, Logged_GDP_per_capita = happydata$Logged_GDP_per_capita, Social_support = happydata$Social_support, Healthy_life_expectancy = happydata$Healthy_life_expectancy, Freedom_to_make_choices = happydata$Freedom_to_make_life_choices,  Perceptions_of_corruption = happydata$Perceptions_of_corruption) 
